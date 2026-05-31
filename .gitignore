@@ -1,0 +1,7 @@
+.env
+output/
+*.egg-info/
+__pycache__/
+*.pyc
+交付物.zip
+截图/

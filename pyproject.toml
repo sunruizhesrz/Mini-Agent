@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-agent"
+version = "1.0.0"
+description = "Minimal coding agent — Phase 1 from claude-code-from-scratch"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
+]
+
+[project.scripts]
+mini-agent = "mini_agent.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["mini_agent*"]
