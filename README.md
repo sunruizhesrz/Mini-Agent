@@ -193,5 +193,3 @@ This project references the following open-source works:
 | [how-claude-code-works](https://github.com/Windy3f3f3f3f/how-claude-code-works) | Claude Code architecture analysis |
 | [claw-code](https://github.com/ultraworkers/claw-code) | Rust clean-room reimplementation |
 | [anthropics/claude-code](https://github.com/anthropics/claude-code) | Official Claude Code repository |
-
-Detailed tutorial (Chinese): [项目讲解](../../项目讲解/README.md)
