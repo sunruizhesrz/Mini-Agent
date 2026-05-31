@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/space-fractions
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - db
+      - redis
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: space-fractions
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d
+  redis:
+    image: redis:7-alpine

@@ -1,0 +1,11 @@
+openapi: 3.0.0
+info:
+  title: Space Fractions API
+  version: 1.0.0
+paths:
+  /play:
+    get:
+      summary: Play
+      responses:
+        200:
+          description: Success

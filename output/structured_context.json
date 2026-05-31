@@ -1,0 +1,609 @@
+{
+  "project_name": "Space Fractions",
+  "architectural_style": "Microservices",
+  "stack": {
+    "lang": "Node.js",
+    "fw": "Express.js",
+    "db": "PostgreSQL",
+    "cache": "Redis",
+    "broker": "RabbitMQ",
+    "runtime": "Docker",
+    "auth": "OAuth2",
+    "observability": "Prometheus",
+    "cicd": "Jenkins",
+    "infra": "Terraform",
+    "search": "Elasticsearch",
+    "rpc": "RESTful API"
+  },
+  "components": [
+    {
+      "name": "Game",
+      "description": "responsible for game logic and user interaction"
+    },
+    {
+      "name": "Question",
+      "description": "responsible for question management and data persistence"
+    },
+    {
+      "name": "User",
+      "description": "responsible for user authentication and authorization"
+    }
+  ],
+  "endpoints": [
+    {
+      "path": "/play",
+      "method": "GET"
+    }
+  ],
+  "tables": [
+    {
+      "name": "games",
+      "columns": [
+        {
+          "name": "id",
+          "type": "SERIAL"
+        },
+        {
+          "name": "game_state",
+          "type": "JSONB"
+        }
+      ]
+    }
+  ],
+  "k8s_resources": [
+    {
+      "kind": "Deployment",
+      "name": "spacefractions",
+      "raw": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: spacefractions\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: spacefractions\n  template:\n    metadata:\n      labels:\n        app: spacefractions\n    spec:\n      containers:\n      - name: spacefractions\n        image: spacefractions:latest\n        ports:\n        - containerPort: 80\n"
+    },
+    {
+      "kind": "Deployment",
+      "name": "spacefractions",
+      "raw": "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: spacefractions\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: spacefractions\n  template:\n    metadata:\n      labels:\n        app: spacefractions\n    spec:\n      containers:\n      - name: spacefractions\n        image: spacefractions:latest\n        ports:\n        - containerPort: 80\n"
+    }
+  ],
+  "proto_services": [
+    {
+      "name": "GameService",
+      "rpcs": [
+        {
+          "name": "Play",
+          "request": "PlayRequest",
+          "response": "PlayResponse"
+        }
+      ]
+    },
+    {
+      "name": "PlayRequest",
+      "fields": [
+        {
+          "name": "gameId",
+          "type": "int32",
+          "number": 1
+        }
+      ],
+      "is_message": true
+    },
+    {
+      "name": "PlayResponse",
+      "fields": [
+        {
+          "name": "gameId",
+          "type": "int32",
+          "number": 1
+        }
+      ],
+      "is_message": true
+    },
+    {
+      "name": "GameService",
+      "rpcs": [
+        {
+          "name": "Play",
+          "request": "PlayRequest",
+          "response": "PlayResponse"
+        }
+      ]
+    },
+    {
+      "name": "PlayRequest",
+      "fields": [
+        {
+          "name": "gameId",
+          "type": "int32",
+          "number": 1
+        }
+      ],
+      "is_message": true
+    },
+    {
+      "name": "PlayResponse",
+      "fields": [
+        {
+          "name": "gameId",
+          "type": "int32",
+          "number": 1
+        }
+      ],
+      "is_message": true
+    }
+  ],
+  "classes": [
+    {
+      "name": "Game",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "visibility": "-"
+        },
+        {
+          "name": "score",
+          "type": "int",
+          "visibility": "-"
+        }
+      ],
+      "methods": [
+        {
+          "name": "play",
+          "params": "",
+          "return_type": "void",
+          "visibility": "+"
+        },
+        {
+          "name": "viewScore",
+          "params": "",
+          "return_type": "int",
+          "visibility": "+"
+        }
+      ],
+      "_description": "responsible for game logic and user interaction"
+    },
+    {
+      "name": "Question",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "visibility": "-"
+        },
+        {
+          "name": "prompt",
+          "type": "string",
+          "visibility": "-"
+        },
+        {
+          "name": "options",
+          "type": "List<string>",
+          "visibility": "-"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getPrompt",
+          "params": "",
+          "return_type": "string",
+          "visibility": "+"
+        },
+        {
+          "name": "getOptions",
+          "params": "",
+          "return_type": "List<string>",
+          "visibility": "+"
+        }
+      ],
+      "_description": "responsible for question management and data persistence"
+    },
+    {
+      "name": "User",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "visibility": "-"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "visibility": "-"
+        }
+      ],
+      "methods": [
+        {
+          "name": "playGame",
+          "params": "game: Game",
+          "return_type": "void",
+          "visibility": "+"
+        },
+        {
+          "name": "viewScore",
+          "params": "game: Game",
+          "return_type": "int",
+          "visibility": "+"
+        }
+      ],
+      "_description": "responsible for user authentication and authorization"
+    },
+    {
+      "name": "Admin",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "visibility": "-"
+        },
+        {
+          "name": "username",
+          "type": "string",
+          "visibility": "-"
+        }
+      ],
+      "methods": [
+        {
+          "name": "updateQuestions",
+          "params": "questions: List<Question>",
+          "return_type": "void",
+          "visibility": "+"
+        }
+      ]
+    },
+    {
+      "name": "game1",
+      "fields": [],
+      "methods": [],
+      "type": "participant",
+      "_description": "responsible for game logic and user interaction"
+    },
+    {
+      "name": "question1",
+      "fields": [],
+      "methods": [],
+      "type": "participant",
+      "_description": "responsible for question management and data persistence"
+    },
+    {
+      "name": "user1",
+      "fields": [],
+      "methods": [],
+      "type": "participant",
+      "_description": "responsible for user authentication and authorization"
+    },
+    {
+      "name": "admin1",
+      "fields": [],
+      "methods": [],
+      "type": "participant"
+    },
+    {
+      "name": "Game",
+      "fields": [],
+      "methods": [],
+      "_description": "responsible for game logic and user interaction"
+    },
+    {
+      "name": "Question",
+      "fields": [],
+      "methods": [],
+      "_description": "responsible for question management and data persistence"
+    },
+    {
+      "name": "User",
+      "fields": [],
+      "methods": [],
+      "_description": "responsible for user authentication and authorization"
+    },
+    {
+      "name": "Admin",
+      "fields": [],
+      "methods": []
+    },
+    {
+      "name": "GameComponent",
+      "fields": [],
+      "methods": [],
+      "type": "component",
+      "_description": "responsible for game logic and user interaction"
+    },
+    {
+      "name": "QuestionComponent",
+      "fields": [],
+      "methods": [],
+      "type": "component",
+      "_description": "responsible for question management and data persistence"
+    },
+    {
+      "name": "UserComponent",
+      "fields": [],
+      "methods": [],
+      "type": "component",
+      "_description": "responsible for user authentication and authorization"
+    },
+    {
+      "name": "AdminComponent",
+      "fields": [],
+      "methods": [],
+      "type": "component"
+    },
+    {
+      "name": "GameContainer",
+      "fields": [],
+      "methods": [],
+      "type": "component",
+      "_description": "responsible for game logic and user interaction"
+    },
+    {
+      "name": "QuestionContainer",
+      "fields": [],
+      "methods": [],
+      "type": "component",
+      "_description": "responsible for question management and data persistence"
+    },
+    {
+      "name": "UserContainer",
+      "fields": [],
+      "methods": [],
+      "type": "component",
+      "_description": "responsible for user authentication and authorization"
+    },
+    {
+      "name": "AdminContainer",
+      "fields": [],
+      "methods": [],
+      "type": "component"
+    }
+  ],
+  "relations": [
+    {
+      "from": "Game",
+      "to": "Question",
+      "type": "--*"
+    },
+    {
+      "from": "User",
+      "to": "Game",
+      "type": "--*"
+    },
+    {
+      "from": "Admin",
+      "to": "Question",
+      "type": "--*"
+    },
+    {
+      "from": "game1",
+      "to": "question1",
+      "type": "-->"
+    },
+    {
+      "from": "user1",
+      "to": "game1",
+      "type": "-->"
+    },
+    {
+      "from": "admin1",
+      "to": "question1",
+      "type": "-->"
+    },
+    {
+      "from": "Playing",
+      "to": "Paused",
+      "type": "-->"
+    },
+    {
+      "from": "Paused",
+      "to": "Playing",
+      "type": "-->"
+    },
+    {
+      "from": "Playing",
+      "to": "GameOver",
+      "type": "-->"
+    },
+    {
+      "from": "User",
+      "to": "Game",
+      "type": "message",
+      "label": "play()"
+    },
+    {
+      "from": "Game",
+      "to": "Question",
+      "type": "message",
+      "label": "getPrompt()"
+    },
+    {
+      "from": "Question",
+      "to": "Game",
+      "type": "message",
+      "label": "return prompt"
+    },
+    {
+      "from": "Game",
+      "to": "User",
+      "type": "message",
+      "label": "display prompt"
+    },
+    {
+      "from": "User",
+      "to": "Game",
+      "type": "message",
+      "label": "submit answer"
+    },
+    {
+      "from": "Game",
+      "to": "Question",
+      "type": "message",
+      "label": "check answer"
+    },
+    {
+      "from": "Question",
+      "to": "Game",
+      "type": "message",
+      "label": "return result"
+    },
+    {
+      "from": "Game",
+      "to": "User",
+      "type": "message",
+      "label": "display result"
+    },
+    {
+      "from": "Admin",
+      "to": "Question",
+      "type": "message",
+      "label": "update()"
+    },
+    {
+      "from": "Question",
+      "to": "Admin",
+      "type": "message",
+      "label": "return success"
+    },
+    {
+      "from": "User",
+      "to": "Game",
+      "type": "message",
+      "label": "play()"
+    },
+    {
+      "from": "Game",
+      "to": "Question",
+      "type": "message",
+      "label": "getPrompt()"
+    },
+    {
+      "from": "Question",
+      "to": "Game",
+      "type": "message",
+      "label": "return prompt"
+    },
+    {
+      "from": "Game",
+      "to": "User",
+      "type": "message",
+      "label": "display prompt"
+    },
+    {
+      "from": "User",
+      "to": "Game",
+      "type": "message",
+      "label": "submit answer"
+    },
+    {
+      "from": "Game",
+      "to": "Question",
+      "type": "message",
+      "label": "check answer"
+    },
+    {
+      "from": "Question",
+      "to": "Game",
+      "type": "message",
+      "label": "return result"
+    },
+    {
+      "from": "Game",
+      "to": "User",
+      "type": "message",
+      "label": "display result"
+    },
+    {
+      "from": "Admin",
+      "to": "Question",
+      "type": "message",
+      "label": "update()"
+    },
+    {
+      "from": "Question",
+      "to": "Admin",
+      "type": "message",
+      "label": "return success"
+    },
+    {
+      "from": "Game",
+      "to": "User",
+      "type": "--"
+    },
+    {
+      "from": "Game",
+      "to": "Admin",
+      "type": "--"
+    },
+    {
+      "from": "GameComponent",
+      "to": "QuestionComponent",
+      "type": "--"
+    },
+    {
+      "from": "GameComponent",
+      "to": "UserComponent",
+      "type": "--"
+    },
+    {
+      "from": "GameComponent",
+      "to": "AdminComponent",
+      "type": "--"
+    },
+    {
+      "from": "GameServer",
+      "to": "QuestionServer",
+      "type": "--"
+    },
+    {
+      "from": "GameServer",
+      "to": "UserClient",
+      "type": "--"
+    },
+    {
+      "from": "GameServer",
+      "to": "AdminClient",
+      "type": "--"
+    },
+    {
+      "from": "GameContainer",
+      "to": "QuestionContainer",
+      "type": "--"
+    },
+    {
+      "from": "GameContainer",
+      "to": "UserContainer",
+      "type": "--"
+    },
+    {
+      "from": "GameContainer",
+      "to": "AdminContainer",
+      "type": "--"
+    }
+  ],
+  "traceability": [
+    {
+      "id": "ASR-1 (data durability)",
+      "text": "Unit testing, Integration testing",
+      "component": ""
+    },
+    {
+      "id": "NFR-1 (performance)",
+      "text": "Load testing, Stress testing",
+      "component": ""
+    },
+    {
+      "id": "ASR-2 (security)",
+      "text": "Penetration testing, Vulnerability scanning",
+      "component": ""
+    },
+    {
+      "id": "FR-1",
+      "text": "Play game",
+      "component": "GameComponent"
+    },
+    {
+      "id": "NFR-1",
+      "text": "Performance",
+      "component": "GameComponent"
+    },
+    {
+      "id": "ASR-1",
+      "text": "Data durability",
+      "component": "QuestionComponent"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS games (
+  id SERIAL PRIMARY KEY,
+  game_state JSONB
+);

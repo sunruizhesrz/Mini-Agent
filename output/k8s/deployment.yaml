@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: space-fractions
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: space-fractions
+  template:
+    metadata:
+      labels:
+        app: space-fractions
+    spec:
+      containers:
+      - name: space-fractions
+        image: space-fractions:latest
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: space-fractions
+spec:
+  selector:
+    app: space-fractions
+  ports:
+  - port: 80
+    targetPort: 3000
+  type: ClusterIP
