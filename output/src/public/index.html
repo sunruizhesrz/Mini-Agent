@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Fractions</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: linear-gradient(135deg, #0c0a3e 0%, #1a1656 40%, #2d1b69 100%);
+  color: #e8d5f5;
+  min-height: 100vh;
+  display: flex; justify-content: center; align-items: center;
+}
+#app { max-width: 700px; width: 90%; text-align: center; }
+
+/* Title Screen */
+#title-screen h1 {
+  font-size: 3em; background: linear-gradient(90deg, #f9d423, #ff6ec7);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  margin-bottom: 10px;
+}
+#title-screen p { font-size: 1.2em; opacity: 0.8; margin-bottom: 30px; }
+.stars {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 0;
+}
+.star {
+  position: absolute; background: white; border-radius: 50%;
+  animation: twinkle 2s infinite alternate;
+}
+@keyframes twinkle { from { opacity: 0.3; } to { opacity: 1; } }
+
+.btn {
+  background: linear-gradient(135deg, #f9d423, #ff6ec7);
+  color: #0c0a3e; border: none; padding: 14px 40px; font-size: 1.2em;
+  font-weight: bold; border-radius: 50px; cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s; margin: 8px;
+}
+.btn:hover { transform: scale(1.05); box-shadow: 0 4px 20px rgba(249,212,35,0.4); }
+.btn.small { padding: 8px 20px; font-size: 0.9em; }
+.btn.secondary {
+  background: rgba(255,255,255,0.15); color: #e8d5f5;
+}
+
+/* Question */
+#question-screen, #result-screen { display: none; }
+.question-card {
+  background: rgba(255,255,255,0.08); border-radius: 20px; padding: 30px;
+  backdrop-filter: blur(10px); margin: 20px 0;
+}
+.question-text { font-size: 2em; margin: 20px 0; }
+.option-btn {
+  display: block; width: 100%; padding: 14px; margin: 8px 0;
+  background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 12px; color: #e8d5f5; font-size: 1.1em; cursor: pointer;
+  transition: all 0.2s;
+}
+.option-btn:hover { background: rgba(249,212,35,0.2); border-color: #f9d423; }
+.option-btn.correct { background: rgba(76,217,100,0.3); border-color: #4cd964; }
+.option-btn.wrong { background: rgba(255,69,58,0.3); border-color: #ff453a; }
+
+.score-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 20px; background: rgba(0,0,0,0.3); border-radius: 12px;
+  margin-bottom: 15px;
+}
+.progress { height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; margin: 10px 0; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #f9d423, #ff6ec7); border-radius: 3px; transition: width 0.3s; }
+
+/* Result */
+#result-screen .big-score { font-size: 4em; font-weight: bold; background: linear-gradient(90deg, #f9d423, #ff6ec7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.stars-display { font-size: 2em; margin: 10px 0; }
+
+.spinner {
+  border: 3px solid rgba(255,255,255,0.2); border-top-color: #f9d423;
+  border-radius: 50%; width: 40px; height: 40px; animation: spin 0.8s linear infinite;
+  margin: 20px auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="stars" id="stars"></div>
+<div id="app">
+  <!-- Title Screen -->
+  <div id="title-screen">
+    <h1>🚀 Space Fractions</h1>
+    <p>Master fractions through an interactive space adventure!</p>
+    <button class="btn" onclick="startGame()">Start Game</button>
+    <p style="margin-top:20px;opacity:0.6;font-size:0.85em">Choose the correct answer for each fraction question.<br>Score points and reach the stars!</p>
+  </div>
+
+  <!-- Question Screen -->
+  <div id="question-screen">
+    <div class="score-bar">
+      <span>Score: <strong id="score">0</strong></span>
+      <span>Question <span id="q-num">1</span>/<span id="q-total">0</span></span>
+      <span>⭐ <span id="stars-count">0</span></span>
+    </div>
+    <div class="progress"><div class="progress-fill" id="progress-bar" style="width:0%"></div></div>
+    <div class="question-card">
+      <p style="opacity:0.7">What is the result?</p>
+      <div class="question-text" id="question-text">Loading...</div>
+    </div>
+    <div id="options-container"></div>
+  </div>
+
+  <!-- Result Screen -->
+  <div id="result-screen">
+    <h1>🎉 Mission Complete!</h1>
+    <div class="big-score" id="final-score">0</div>
+    <p>points earned</p>
+    <div class="stars-display" id="final-stars"></div>
+    <button class="btn" onclick="startGame()">Play Again</button>
+    <button class="btn secondary" onclick="showTitle()">Main Menu</button>
+  </div>
+</div>
+
+<script>
+// Generate starfield background
+(function() {
+  var c = document.getElementById('stars');
+  for (var i = 0; i < 80; i++) {
+    var s = document.createElement('div');
+    s.className = 'star';
+    s.style.left = Math.random() * 100 + '%';
+    s.style.top = Math.random() * 100 + '%';
+    s.style.width = s.style.height = (Math.random() * 3 + 1) + 'px';
+    s.style.animationDelay = Math.random() * 3 + 's';
+    s.style.animationDuration = (Math.random() * 2 + 1.5) + 's';
+    c.appendChild(s);
+  }
+})();
+
+// Fraction questions (client-side fallback + API-based)
+var QUESTIONS = [
+  { q: "1/2 + 1/4 = ?", options: ["1/6", "3/4", "2/6", "1/8"], answer: 1 },
+  { q: "3/5 - 1/5 = ?", options: ["2/5", "4/5", "1/5", "3/10"], answer: 0 },
+  { q: "2/3 × 1/2 = ?", options: ["1/3", "2/5", "3/4", "1/2"], answer: 0 },
+  { q: "3/4 ÷ 1/2 = ?", options: ["3/8", "1 1/2", "2/3", "3/2"], answer: 1 },
+  { q: "1/3 + 2/3 = ?", options: ["3/6", "2/3", "1", "3/3"], answer: 2 },
+  { q: "5/8 - 1/2 = ?", options: ["1/8", "4/6", "2/8", "1/4"], answer: 0 },
+  { q: "2/5 × 3/4 = ?", options: ["6/20", "3/10", "5/9", "1/2"], answer: 1 },
+  { q: "7/8 ÷ 1/4 = ?", options: ["7/32", "2 1/2", "3 1/2", "7/2"], answer: 2 },
+];
+
+var currentQ = 0, score = 0;
+
+function showTitle() {
+  document.getElementById('title-screen').style.display = 'block';
+  document.getElementById('question-screen').style.display = 'none';
+  document.getElementById('result-screen').style.display = 'none';
+}
+
+function startGame() {
+  currentQ = 0; score = 0;
+  document.getElementById('title-screen').style.display = 'none';
+  document.getElementById('result-screen').style.display = 'none';
+  document.getElementById('question-screen').style.display = 'block';
+
+  // Try loading questions from API
+  if ('/api/question') {
+    fetch('/api/question').then(function(r) { return r.json(); }).then(function(data) {
+      if (Array.isArray(data) && data.length > 0) {
+        QUESTIONS = data.map(function(item) { return {
+          q: item.prompt || item.question_text || 'Fraction problem',
+          options: Array.isArray(item.options) ? item.options : JSON.parse(item.options || '[]'),
+          answer: item.correct_answer !== undefined ? item.correct_answer : 0
+        }; });
+      }
+      renderQuestion();
+    }).catch(function() { renderQuestion(); });
+  } else {
+    renderQuestion();
+  }
+}
+
+function renderQuestion() {
+  if (currentQ >= QUESTIONS.length) return endGame();
+  var q = QUESTIONS[currentQ];
+  document.getElementById('question-text').textContent = q.q;
+  document.getElementById('q-num').textContent = currentQ + 1;
+  document.getElementById('q-total').textContent = QUESTIONS.length;
+  document.getElementById('score').textContent = score;
+  document.getElementById('progress-bar').style.width = (currentQ / QUESTIONS.length * 100) + '%';
+
+  var opts = document.getElementById('options-container');
+  opts.innerHTML = '';
+  q.options.forEach(function(opt, i) {
+    var btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.textContent = opt;
+    btn.onclick = function() { answer(i, btn); };
+    opts.appendChild(btn);
+  });
+}
+
+function answer(idx, btn) {
+  var q = QUESTIONS[currentQ];
+  var allBtns = document.querySelectorAll('.option-btn');
+  allBtns.forEach(function(b) { b.disabled = true; });
+
+  if (idx === q.answer) {
+    btn.classList.add('correct');
+    score += 10;
+    document.getElementById('score').textContent = score;
+  } else {
+    btn.classList.add('wrong');
+    allBtns[q.answer].classList.add('correct');
+  }
+
+  // Record score via API if available
+  if ('/api/game') {
+    fetch('/api/game', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score: score, question_id: currentQ + 1 })
+    }).catch(function() {});
+  }
+
+  setTimeout(function() {
+    currentQ++;
+    renderQuestion();
+  }, 1200);
+}
+
+function endGame() {
+  document.getElementById('question-screen').style.display = 'none';
+  document.getElementById('result-screen').style.display = 'block';
+  document.getElementById('final-score').textContent = score;
+  var stars = score >= 70 ? '⭐⭐⭐' : score >= 40 ? '⭐⭐' : '⭐';
+  document.getElementById('final-stars').textContent = stars;
+  document.getElementById('stars-count').textContent =
+    score >= 70 ? 3 : score >= 40 ? 2 : 1;
+}
+</script>
+</body>
+</html>
