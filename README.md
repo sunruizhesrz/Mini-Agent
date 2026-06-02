@@ -29,11 +29,11 @@ The project consists of **~2,300 lines of Python across 7 source files**, suppor
 ## ✨ Features
 
 - **Agent Loop**: Implements the core Claude Code mechanism — `while True` loop with LLM decision-making and autonomous tool invocation
-- **Universal Preprocessor**: Adaptive Markdown + PlantUML parser supporting 5 languages (Node.js / Python / Go / Java / Rust) and 6 frameworks (Express / Koa / Flask / FastAPI / Django / NestJS)
+- **Universal Preprocessor**: Adaptive Markdown + PlantUML parser with language detection (Node.js, Python, Go, Java, Rust) and full code generation for Node.js (Express, Koa) and Python (Django, Flask, FastAPI)
 - **6-Tool System**: read_file, write_file, edit_file, list_files, grep_search, run_shell — with permission checks and read-before-write protection
 - **4 Permission Modes**: default / acceptEdits / bypassPermissions / dontAsk — mirroring Claude Code's security framework
 - **Dual Backend**: OpenAI-compatible API (Qwen / GPT) and native Anthropic API
-- **Pipeline Mode**: Two-phase architecture — preprocessing generates scaffold, LLM enhances code quality
+- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator) produces a fully runnable project (4/4 tests pass with PostgreSQL). Phase 2 (LLM) optionally enhances quality via self-verification loop (syntax check → test → fix → re-test)
 - **Chat Mode**: Interactive REPL with streaming output, context compaction, and session persistence
 
 ------
@@ -67,8 +67,8 @@ python -m mini_agent \
   --model qwen-max
 ```
 
-**Phase 1** (0.2s, zero API cost): The preprocessor parses Markdown + PlantUML, detects the tech stack, and generates a base scaffold.
-**Phase 2** (2–5 min): The LLM reads `structured_context.json`, autonomously invokes tools, and enhances every file.
+**Phase 1** (0.2s, zero API cost): The preprocessor produces a **fully runnable** project — 4/4 tests pass with PostgreSQL. No LLM required.
+**Phase 2** (optional, requires API): The LLM reads `structured_context.json`, enhances code, then self-verifies via a `syntax check → test → fix → re-test` loop.
 
 ### Chat Mode — Interactive Coding Assistant
 
@@ -100,17 +100,19 @@ REPL commands: `/clear` (clear history), `/cost` (show token usage), `/compact` 
                       │   language detection           │
                       │   framework selection          │
                       │   dynamic dependency matching  │
-                      │   → 38–65 scaffold files      │
+                      │   → runnable project (38 files) │
                       └──────────┬───────────────────┘
                                  │
                       ┌──────────▼───────────────────┐
-                      │  Phase 2: agent.py            │
+                      │  Phase 2: agent.py (optional) │
                       │  (LLM Agent Loop, 2–5 min)     │
                       │                              │
                       │ while True:                   │
                       │   LLM → which tool to call?   │
                       │   execute tool → feed result   │
-                      │   no tool_calls? → done        │
+                      │   node -c → syntax check       │
+                      │   npm test → failures? → fix   │
+                      │   all pass? → done             │
                       └──────────────────────────────┘
 ```
 
@@ -147,6 +149,29 @@ generator.py ← stdlib only (re + pathlib)
     └────┬────┘
    __main__.py  ← dispatches to pipeline / Chat mode
 ```
+
+------
+
+## ✅ Verifying the Output
+
+The generated project is fully runnable. To verify:
+
+```bash
+cd output
+
+# 1. Syntax check all files
+for f in $(find src -name "*.js"); do node -c "$f" && echo "OK: $f"; done
+
+# 2. Install and test
+npm install
+DATABASE_URL="postgresql://localhost:5432/testdb" npx jest --forceExit
+# Result: 4 passed, 4 total
+
+# 3. Start the server
+node src/server.js
+```
+
+Requirements: Node.js 18+ and PostgreSQL (or use `docker compose up -d`).
 
 ------
 
