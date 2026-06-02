@@ -29,11 +29,11 @@ The project consists of **~2,300 lines of Python across 7 source files**, suppor
 ## ✨ Features
 
 - **Agent Loop**: Implements the core Claude Code mechanism — `while True` loop with LLM decision-making and autonomous tool invocation
-- **Universal Preprocessor**: Adaptive Markdown + PlantUML parser with language detection (Node.js, Python, Go, Java, Rust) and full code generation for Node.js (Express, Koa) and Python (Django, Flask, FastAPI)
+- **Universal Preprocessor**: Adaptive Markdown + PlantUML parser with language detection (Node.js, Python, Go, Java, Rust) and full code generation templates for Node.js (Express, Koa), Python (Django, Flask, FastAPI), Go (net/http), and Java (Spring Boot)
 - **6-Tool System**: read_file, write_file, edit_file, list_files, grep_search, run_shell — with permission checks and read-before-write protection
 - **4 Permission Modes**: default / acceptEdits / bypassPermissions / dontAsk — mirroring Claude Code's security framework
 - **Dual Backend**: OpenAI-compatible API (Qwen / GPT) and native Anthropic API
-- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator) produces a fully runnable web application with an interactive frontend (fraction quiz game) and REST API backend (4/4 tests pass with PostgreSQL). Phase 2 (LLM) optionally enhances quality via self-verification loop (syntax check → test → fix → re-test)
+- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator) produces a fully runnable web application with an interactive frontend (fraction quiz game) and REST API backend (4/4 tests pass with PostgreSQL). Phase 2 (LLM) optionally enhances quality via a self-verification loop (syntax check → install → test → fix → re-test). Phase 2 includes a hard constraint: Agent must not exit until all tests pass
 - **Chat Mode**: Interactive REPL with streaming output, context compaction, and session persistence
 
 ------
@@ -178,6 +178,8 @@ node src/server.js
 Requirements: Node.js 18+ and PostgreSQL (or use `docker compose up -d`).
 
 Open `http://localhost:3000/` in a browser to play the interactive fraction quiz game.
+
+**Phase 2 and LLM Model Choice**: The Agent's self-verification loop (syntax check → test → fix → re-test) is fully implemented, but execution depends on the underlying LLM. `deepseek-v4-pro` executed all three phases (52 tool calls including 6 `run_shell` verification commands), while `qwen-max` generated code without self-verifying. Swapping between supported backends requires no code changes — only the `--model` flag or `.env` configuration.
 
 ------
 

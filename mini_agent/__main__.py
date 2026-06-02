@@ -264,7 +264,15 @@ Also check that `sequelize.sync()` is called during startup — if not, add it.
 
 Output directory: `{output_dir}/`
 
-Begin by reading `{ctx_path}`. Then generate, test, fix, and re-test until everything passes."""
+Begin by reading `{ctx_path}`. Then generate, test, fix, and re-test until everything passes.
+
+**CRITICAL CONSTRAINT: You MUST NOT exit until ALL of the following pass:**
+1. Every .js file passes `node -c <file>`
+2. `npm install` succeeds
+3. `npm test` returns "4 passed, 4 total" (or equivalent for the detected language)
+4. `timeout 5 node src/server.js` starts without error (or equivalent for the detected language)
+
+If ANY of these fail, you MUST read the error, fix the source file, and re-verify. Do NOT exit with failures. This is a hard requirement."""
 
     print_info("Phase 2: Agent generating project...\n")
 

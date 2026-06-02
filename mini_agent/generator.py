@@ -615,8 +615,13 @@ def generate_project(ctx: dict, output_dir: str) -> list[str]:
     modules, class_by_mod, table_by_mod = _build_modules(ctx)
 
     # ── Create directories ─────────────────────────────────────
-    dirs = ["src/common/config", "src/common/middleware", "src/common/utils",
-            "api", "k8s", "sql", "tests", "src/public"]
+    dirs = ["api", "k8s", "sql", "tests", "src/public"]
+    if lang == "go":
+        dirs += ["src/router", "src/database"]
+    elif lang == "java":
+        dirs += [f"src/main/java/com/{proj.replace('-', '')}", "src/main/resources"]
+    else:
+        dirs += ["src/common/config", "src/common/middleware", "src/common/utils"]
     for m in modules:
         for sub in ["controllers", "models", "routes", "services"]:
             dirs.append(f"src/{m}/{sub}")
@@ -630,6 +635,10 @@ def generate_project(ctx: dict, output_dir: str) -> list[str]:
             written += _gen_django_files(out, ctx, modules, class_by_mod, table_by_mod)
         else:
             written += _gen_python_files(out, ctx, modules, class_by_mod, table_by_mod)
+    elif lang == "go":
+        written += _gen_go_files(out, ctx, modules, class_by_mod, table_by_mod)
+    elif lang == "java":
+        written += _gen_java_files(out, ctx, modules, class_by_mod, table_by_mod)
     else:
         written += _gen_node_files(out, ctx, modules, class_by_mod, table_by_mod)
 
@@ -1516,6 +1525,275 @@ service = {cls['name']}Service()
     return written
 
 
+# ── Go generation ──────────────────────────────────────────
+
+def _gen_go_files(out, ctx, modules, class_by_mod, table_by_mod) -> list[str]:
+    written = []
+    proj = ctx["project_name"].lower().replace(" ", "-").replace("_", "-")
+    stack = ctx.get("stack", {})
+
+    # go.mod
+    go_mod = f"module {proj}\n\ngo 1.22"
+    write(out, "go.mod", go_mod)
+    written.append("go.mod")
+
+    # go.sum placeholder
+    write(out, "go.sum", "")
+    written.append("go.sum")
+
+    # main.go
+    main_go = f"""package main
+
+import (
+\t"log"
+\t"net/http"
+\t"os"
+
+\t"{proj}/src/router"
+)
+
+func main() {{
+\tr := router.NewRouter()
+\tport := os.Getenv("PORT")
+\tif port == "" {{
+\t\tport = "3000"
+\t}}
+\tlog.Printf("{ctx['project_name']} server running on port %s", port)
+\tlog.Fatal(http.ListenAndServe(":"+port, r))
+}}
+"""
+    write(out, "src/main.go", main_go)
+    written.append("src/main.go")
+
+    # router/router.go
+    router_code = "package router\n\nimport (\n"
+    # Detect framework
+    fw = (stack.get("fw", "") or "").lower()
+    for m in modules:
+        router_code += f'\t"{proj}/src/{m}/routes"\n'
+    router_code += """\t"net/http"
+)
+
+func NewRouter() http.Handler {
+\tmux := http.NewServeMux()\n"""
+    for m in modules:
+        router_code += f'\troutes.Register{m.capitalize()}Routes(mux)\n'
+    router_code += "\tmux.HandleFunc(\"/health\", func(w http.ResponseWriter, r *http.Request) {\n\t\tw.Write([]byte(`{\"status\":\"ok\"}`))\n\t})\n\treturn mux\n}\n"
+    write(out, "src/router/router.go", router_code)
+    written.append("src/router/router.go")
+
+    # src/database/database.go
+    db = (stack.get("db", "") or "").lower()
+    db_drv = "pgx"
+    db_import = '"github.com/jackc/pgx/v5"'
+    if "mysql" in db:
+        db_drv = "mysql"
+        db_import = '"github.com/go-sql-driver/mysql"'
+    database_go = f"""package database
+
+import (
+\t"database/sql"
+\t"log"
+\t"os"
+\t_ {db_import}
+)
+
+var DB *sql.DB
+
+func Init() {{
+\tdsn := os.Getenv("DATABASE_URL")
+\tif dsn == "" {{
+\t\tdsn = "postgresql://localhost:5432/{proj}?sslmode=disable"
+\t}}
+\tvar err error
+\tDB, err = sql.Open("{db_drv}", dsn)
+\tif err != nil {{
+\t\tlog.Printf("Database connection failed: %v", err)
+\t\treturn
+\t}}
+\tif err = DB.Ping(); err != nil {{
+\t\tlog.Printf("Database ping failed: %v", err)
+\t}}
+}}
+"""
+    write(out, "src/database/database.go", database_go)
+    written.append("src/database/database.go")
+
+    # Per-module files
+    for m in modules:
+        cls = class_by_mod.get(m, {"name": m.capitalize(), "fields": [], "methods": []})
+        tbl = table_by_mod.get(m)
+        fields = tbl["columns"] if tbl and tbl.get("columns") else (
+            cls.get("fields") if cls.get("fields") else [{"name": "id", "type": "SERIAL"}]
+        )
+
+        # models/{m}.go
+        model_go = f"package models\n\nimport \"time\"\n\ntype {cls['name']} struct {{\n"
+        for f in fields:
+            dtype = f["type"].upper()
+            if any(t in dtype for t in ("INT", "SERIAL", "INTEGER")):
+                go_type = "int"
+            elif "FLOAT" in dtype or "DECIMAL" in dtype or "DOUBLE" in dtype:
+                go_type = "float64"
+            elif "JSON" in dtype:
+                go_type = "string"
+            elif "BOOL" in dtype:
+                go_type = "bool"
+            elif "DATE" in dtype or "TIME" in dtype:
+                go_type = "time.Time"
+            else:
+                go_type = "string"
+            model_go += f"\t{f['name'].capitalize()} {go_type} `json:\"{f['name'].lower()}\" db:\"{f['name'].lower()}\"`\n"
+        model_go += "\tCreatedAt time.Time `json:\"created_at\" db:\"created_at\"`\n\tUpdatedAt time.Time `json:\"updated_at\" db:\"updated_at\"`\n}\n"
+        write(out, f"src/{m}/models/{m}.go", model_go)
+
+        # services/{m}.go
+        svc_go = f"package services\n\nimport \"{proj}/src/{m}/models\"\n\nvar {cls['name']}Data []models.{cls['name']}\n\n"
+        for meth in cls.get("methods", []):
+            svc_go += f"func {meth['name'].capitalize()}(params interface{{}}) interface{{}} {{\n\treturn nil\n}}\n\n"
+        svc_go += f"func FindAll() []models.{cls['name']} {{ return {cls['name']}Data }}\n"
+        svc_go += f"func FindByID(id int) *models.{cls['name']} {{ return nil }}\n"
+        svc_go += f"func Create(data models.{cls['name']}) models.{cls['name']} {{ {cls['name']}Data = append({cls['name']}Data, data); return data }}\n"
+        write(out, f"src/{m}/services/{m}.go", svc_go)
+
+        # routes/{m}.go
+        routes_go = f"package routes\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"{proj}/src/{m}/services\"\n)\n\n"
+        routes_go += f"func Register{cls['name']}Routes(mux *http.ServeMux) {{\n"
+        routes_go += f"\tmux.HandleFunc(\"/api/{m}\", func(w http.ResponseWriter, r *http.Request) {{\n"
+        routes_go += f"\t\tresult := services.FindAll()\n\t\tw.Header().Set(\"Content-Type\", \"application/json\")\n\t\tjson.NewEncoder(w).Encode(result)\n"
+        routes_go += f"\t}})\n"
+        for ep in ctx.get("endpoints", []):
+            if m in ep.get("path", "").lower():
+                routes_go += f"\tmux.HandleFunc(\"{ep['path']}\", func(w http.ResponseWriter, r *http.Request) {{\n\t\tjson.NewEncoder(w).Encode(map[string]string{{\"status\":\"ok\"}})\n\t}})\n"
+        routes_go += "}\n"
+        write(out, f"src/{m}/routes/{m}.go", routes_go)
+
+        written.extend([f"src/{m}/models/{m}.go", f"src/{m}/services/{m}.go", f"src/{m}/routes/{m}.go"])
+
+    return written
+
+
+# ── Java generation ────────────────────────────────────────
+
+def _gen_java_files(out, ctx, modules, class_by_mod, table_by_mod) -> list[str]:
+    written = []
+    proj = ctx["project_name"].lower().replace(" ", "-").replace("_", "-")
+    pkg = ctx["project_name"].lower().replace(" ", "").replace("-", "").replace("_", "")
+    stack = ctx.get("stack", {})
+
+    # pom.xml
+    pom = f"""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.{pkg}</groupId>
+  <artifactId>{proj}</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+  </properties>
+  <dependencies>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId><version>3.2.0</version></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId><version>3.2.0</version></dependency>
+    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><version>42.7.0</version></dependency>
+  </dependencies>
+</project>
+"""
+    write(out, "pom.xml", pom)
+    written.append("pom.xml")
+
+    # Main Application
+    main_class = f"""package com.{pkg};
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Application {{
+    public static void main(String[] args) {{
+        SpringApplication.run(Application.class, args);
+    }}
+}}
+"""
+    write(out, "src/main/java/com/" + pkg + "/Application.java", main_class)
+    written.append(f"src/main/java/com/{pkg}/Application.java")
+
+    # application.properties
+    write(out, "src/main/resources/application.properties",
+          f"server.port=3000\nspring.datasource.url=jdbc:postgresql://localhost:5432/{proj}\nspring.jpa.hibernate.ddl-auto=update\n")
+    written.append("src/main/resources/application.properties")
+
+    # Per-module files
+    for m in modules:
+        cls = class_by_mod.get(m, {"name": m.capitalize(), "fields": [], "methods": []})
+        tbl = table_by_mod.get(m)
+        fields = tbl["columns"] if tbl and tbl.get("columns") else (
+            cls.get("fields") if cls.get("fields") else [{"name": "id", "type": "SERIAL"}]
+        )
+
+        pkg_path = f"src/main/java/com/{pkg}/{m}"
+        (out / pkg_path).mkdir(parents=True, exist_ok=True)
+
+        # Entity
+        entity = f"package com.{pkg}.{m};\n\nimport jakarta.persistence.*;\n\n@Entity\n@Table(name = \"{m}s\")\npublic class {cls['name']} {{\n"
+        for f in fields:
+            dtype = f["type"].upper()
+            java_type = "String"
+            if any(t in dtype for t in ("INT", "SERIAL", "INTEGER", "NUMBER")):
+                java_type = "Integer"
+            elif "FLOAT" in dtype or "DOUBLE" in dtype or "DECIMAL" in dtype:
+                java_type = "Double"
+            elif "JSON" in dtype:
+                java_type = "String"
+            elif "BOOL" in dtype:
+                java_type = "Boolean"
+            entity += f"    @Id\n" if f["name"].lower() == "id" else ""
+            entity += f"    private {java_type} {f['name']};\n"
+        entity += "\n    // Getters and setters\n"
+        for f in fields:
+            java_type = "Integer" if any(t in f["type"].upper() for t in ("INT", "SERIAL", "INTEGER")) else "String"
+            entity += f"    public {java_type} get{f['name'].capitalize()}() {{ return {f['name']}; }}\n"
+            entity += f"    public void set{f['name'].capitalize()}({java_type} {f['name']}) {{ this.{f['name']} = {f['name']}; }}\n"
+        entity += "}\n"
+        write(out, f"{pkg_path}/{cls['name']}.java", entity)
+
+        # Repository
+        repo = f"package com.{pkg}.{m};\n\nimport org.springframework.data.jpa.repository.JpaRepository;\nimport org.springframework.stereotype.Repository;\n\n@Repository\npublic interface {cls['name']}Repository extends JpaRepository<{cls['name']}, Long> {{\n}}\n"
+        write(out, f"{pkg_path}/{cls['name']}Repository.java", repo)
+
+        # Service
+        svc = f"package com.{pkg}.{m};\n\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.stereotype.Service;\nimport java.util.List;\n\n@Service\npublic class {cls['name']}Service {{\n"
+        svc += f"    @Autowired\n    private {cls['name']}Repository repository;\n\n"
+        svc += f"    public List<{cls['name']}> findAll() {{ return repository.findAll(); }}\n"
+        svc += f"    public {cls['name']} findById(Long id) {{ return repository.findById(id).orElse(null); }}\n"
+        svc += f"    public {cls['name']} create({cls['name']} entity) {{ return repository.save(entity); }}\n"
+        for meth in cls.get("methods", []):
+            svc += f"    public Object {meth['name']}(Object params) {{ return null; }}\n"
+        svc += "}\n"
+        write(out, f"{pkg_path}/{cls['name']}Service.java", svc)
+
+        # Controller
+        ctrl = f"package com.{pkg}.{m};\n\nimport org.springframework.beans.factory.annotation.Autowired;\nimport org.springframework.web.bind.annotation.*;\nimport java.util.List;\n\n@RestController\n@RequestMapping(\"/api/{m}\")\npublic class {cls['name']}Controller {{\n"
+        ctrl += f"    @Autowired\n    private {cls['name']}Service service;\n\n"
+        ctrl += f"    @GetMapping\n    public List<{cls['name']}> getAll() {{ return service.findAll(); }}\n"
+        ctrl += f"    @GetMapping(\"/{{id}}\")\n    public {cls['name']} getById(@PathVariable Long id) {{ return service.findById(id); }}\n"
+        ctrl += f"    @PostMapping\n    public {cls['name']} create(@RequestBody {cls['name']} entity) {{ return service.create(entity); }}\n"
+        for ep in ctx.get("endpoints", []):
+            if m in ep.get("path", "").lower():
+                verb = ep["method"].lower()
+                path = ep["path"]
+                ctrl += f"    @{verb.capitalize()}Mapping(\"{path}\")\n    public Object {path.strip('/').replace('/', '_')}() {{ return null; }}\n"
+        ctrl += "}\n"
+        write(out, f"{pkg_path}/{cls['name']}Controller.java", ctrl)
+
+        written.extend([f"{pkg_path}/{cls['name']}.java", f"{pkg_path}/{cls['name']}Repository.java",
+                        f"{pkg_path}/{cls['name']}Service.java", f"{pkg_path}/{cls['name']}Controller.java"])
+
+    return written
+
+
 # ── Language-agnostic generators ────────────────────────────────
 
 def _gen_sql_files(out, ctx) -> list[str]:
@@ -1619,6 +1897,20 @@ COPY --from=builder /app/server .
 EXPOSE 3000
 CMD ["./server"]
 """
+    elif lang == "java":
+        docker = f"""FROM maven:3.9-eclipse-temurin-17 AS builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src/ ./src/
+RUN mvn package -DskipTests
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/target/{proj}-1.0.0.jar ./app.jar
+EXPOSE 3000
+CMD ["java", "-jar", "app.jar"]
+"""
     else:  # node
         docker = f"""FROM node:18-alpine
 WORKDIR /app
@@ -1679,6 +1971,53 @@ def _gen_tests(out, ctx, modules, lang) -> list[str]:
 """
             write(out, f"tests/test_{m}.py", test)
             written.append(f"tests/test_{m}.py")
+        elif lang == "go":
+            proj_go = ctx['project_name'].lower().replace(' ', '').replace('-', '')
+            test = f"""package tests
+
+import (
+\t"net/http"
+\t"net/http/httptest"
+\t"testing"
+\t"{proj_go}/src/router"
+)
+
+func Test{m.capitalize()}API(t *testing.T) {{
+\tr := router.NewRouter()
+\treq := httptest.NewRequest("GET", "/api/{m}", nil)
+\tw := httptest.NewRecorder()
+\tr.ServeHTTP(w, req)
+\tif w.Code != 200 {{
+\t\tt.Errorf("expected 200, got %d", w.Code)
+\t}}
+}}
+"""
+            write(out, f"tests/{m}_test.go", test)
+            written.append(f"tests/{m}_test.go")
+        elif lang == "java":
+            pkg_java = ctx['project_name'].lower().replace(' ', '').replace('-', '')
+            test = f"""package com.{pkg_java}.tests;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+public class {m.capitalize()}ControllerTest {{
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Test
+    void testGet{m.capitalize()}() {{
+        var response = restTemplate.getForEntity("/api/{m}", String.class);
+        assertEquals(200, response.getStatusCodeValue());
+    }}
+}}
+"""
+            write(out, f"src/test/java/com/{pkg_java}/tests/{m.capitalize()}ControllerTest.java", test)
+            written.append(f"src/test/java/com/{pkg_java}/tests/{m.capitalize()}ControllerTest.java")
         else:
             test = f"""const request = require('supertest');
 const app = require('../src/app');
@@ -1989,6 +2328,9 @@ function endGame() {{
 </html>"""
     write(out, "src/public/index.html", html)
     return ["src/public/index.html"]
+
+
+def _gen_dotfiles(out, ctx) -> list[str]:
     proj = ctx["project_name"].lower().replace(" ", "-").replace("_", "-")
     write(out, ".gitignore", "node_modules/\n.env\n*.log\ncoverage/\n__pycache__/\n*.pyc\n")
     write(out, ".env.example",
