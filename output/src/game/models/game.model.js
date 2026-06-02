@@ -7,7 +7,7 @@ const Game = sequelize.define('Game', {
 
     game_state: { type: DataTypes.JSONB,  },
 }, {
-  tableName: 'space-fractions_games',
+  tableName: 'games',
   timestamps: true,
   underscored: true,
 });

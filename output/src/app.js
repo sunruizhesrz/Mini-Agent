@@ -18,4 +18,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 app.use(errorHandler);
 
+// Initialize database (auto-sync on import)
+const { sequelize } = require('./common/config/database');
+const dbReady = sequelize.sync({ alter: true }).then(() => {}).catch(() => {});
+
 module.exports = app;
+module.exports.dbReady = dbReady;

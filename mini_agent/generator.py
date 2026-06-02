@@ -746,7 +746,7 @@ def _gen_node_files(out, ctx, modules, class_by_mod, table_by_mod) -> list[str]:
         "main": "src/server.js",
         "scripts": {"start": "node src/server.js", "dev": "nodemon src/server.js", "test": "jest --coverage"},
         "dependencies": {},
-        "devDependencies": {"jest": "^29.7.0", "nodemon": "^3.0.0"},
+        "devDependencies": {"jest": "^29.7.0", "supertest": "^6.3.0", "nodemon": "^3.0.0"},
     }
     # Express is default for Node.js
     fw_lower = (stack.get("fw", "") or "").lower()
@@ -811,7 +811,11 @@ def _gen_node_files(out, ctx, modules, class_by_mod, table_by_mod) -> list[str]:
     server_js = f"""require('dotenv').config();
 const app = require('./app');
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('{ctx["project_name"]} server running on port ' + PORT));
+
+// Wait for database sync (handled by app.js), then start listening
+(app.dbReady || Promise.resolve()).then(() => {{
+  app.listen(PORT, () => console.log('{ctx["project_name"]} server running on port ' + PORT));
+}});
 """
     write(out, "src/server.js", server_js)
     written.append("src/server.js")
@@ -901,7 +905,7 @@ app.use(logger);
     for m in modules:
         body += f"app.use('/api/{m}', require('./{m}/routes/{m}.routes'));\n"
     body += "\napp.get('/health', (req, res) => res.json({ status: 'ok' }));\n"
-    body += "\napp.use(errorHandler);\n\nmodule.exports = app;\n"
+    body += "\napp.use(errorHandler);\n\n// Initialize database (auto-sync on import)\nconst { sequelize } = require('./common/config/database');\nconst dbReady = sequelize.sync({ alter: true }).then(() => {}).catch(() => {});\n\nmodule.exports = app;\nmodule.exports.dbReady = dbReady;\n"
     return body
 
 
@@ -931,6 +935,10 @@ def _gen_node_model(name: str, fields: list[dict], mod: str, proj: str, db_lower
         if any(t in dtype for t in ("INT", "SERIAL", "INTEGER", "NUMBER")):
             js_type = "DataTypes.INTEGER"
             is_int = True
+        elif "LIST" in dtype or "ARRAY" in dtype:
+            # PlantUML List<string> / ARRAY → JSONB for flexible storage
+            js_type = "DataTypes.JSONB"
+            is_int = False
         elif "JSON" in dtype:
             js_type = "DataTypes.JSONB"
             is_int = False
@@ -972,7 +980,7 @@ const {{ sequelize }} = require('../../common/config/database');
 
 const {name} = sequelize.define('{name}', {{
 {fields_js}}}, {{
-  tableName: '{proj}_{mod}s',
+  tableName: '{mod}s',
   timestamps: true,
   underscored: true,
 }});
@@ -985,10 +993,27 @@ def _gen_node_service(cls: dict) -> str:
     methods = cls.get("methods", [])
     svc_methods = ""
     for meth in methods:
-        svc_methods += f"  async {meth['name']}(params) {{\n    // TODO: implement {meth.get('return_type', 'void')}\n    return {{}};\n  }}\n\n"
-    if not svc_methods:
-        svc_methods = (f"  async findAll() {{ return await {cls['name']}.findAll(); }}\n"
-                       f"  async findById(id) {{ return await {cls['name']}.findByPk(id); }}\n")
+        rtype = meth.get('return_type', 'void').strip()
+        if rtype in ("void", "Void"):
+            svc_methods += (
+                f"  async {meth['name']}(data = {{}}) {{\n"
+                f"    const result = await {cls['name']}.create(data);\n"
+                f"    return result;\n"
+                f"  }}\n\n"
+            )
+        else:
+            svc_methods += (
+                f"  async {meth['name']}(data = {{}}) {{\n"
+                f"    const result = await {cls['name']}.findAll({{ where: data }});\n"
+                f"    return result;\n"
+                f"  }}\n\n"
+            )
+    # Always include standard CRUD
+    svc_methods += (
+        f"  async findAll() {{ return await {cls['name']}.findAll(); }}\n"
+        f"  async findById(id) {{ return await {cls['name']}.findByPk(id); }}\n"
+        f"  async create(data) {{ return await {cls['name']}.create(data); }}\n"
+    )
     return f"""const {cls['name']} = require('../models/{cls['name'].lower()}.model');
 
 class {cls['name']}Service {{
@@ -1002,18 +1027,29 @@ def _gen_node_controller(cls: dict, mod: str) -> str:
     methods = cls.get("methods", [])
     ctrl_methods = ""
     for meth in methods:
+        mname = meth['name'].lower()
+        # Choose parameter source based on typical REST conventions
+        if any(kw in mname for kw in ("create", "register", "submit", "update", "place", "play")):
+            params = "req.body"
+        elif "id" in mname or "getby" in mname:
+            params = "req.params"
+        else:
+            params = "req.query"
         ctrl_methods += f"  async {meth['name']}(req, res, next) {{\n"
-        ctrl_methods += f"    try {{ const result = await service.{meth['name']}(req.params); res.json(result); }} catch (e) {{ next(e); }}\n"
+        ctrl_methods += f"    try {{ const result = await service.{meth['name']}({params}); res.json(result); }} catch (e) {{ next(e); }}\n"
         ctrl_methods += "  }\n\n"
-    if not ctrl_methods:
-        ctrl_methods = (
-            "  async getAll(req, res, next) {\n"
-            "    try { const result = await service.findAll(); res.json(result); } catch (e) { next(e); }\n"
-            "  }\n"
-            "  async getById(req, res, next) {\n"
-            "    try { const result = await service.findById(req.params.id); res.json(result); } catch (e) { next(e); }\n"
-            "  }\n"
-        )
+    # Always include standard CRUD methods
+    ctrl_methods += (
+        "  async getAll(req, res, next) {\n"
+        "    try { const result = await service.findAll(); res.json(result); } catch (e) { next(e); }\n"
+        "  }\n"
+        "  async getById(req, res, next) {\n"
+        "    try { const result = await service.findById(req.params.id); res.json(result); } catch (e) { next(e); }\n"
+        "  }\n"
+        "  async create(req, res, next) {\n"
+        "    try { const result = await service.create(req.body); res.json(result); } catch (e) { next(e); }\n"
+        "  }\n"
+    )
     return f"""const service = require('../services/{mod}.service');
 
 class {cls['name']}Controller {{
@@ -1578,7 +1614,7 @@ CMD ["./server"]
         docker = f"""FROM node:18-alpine
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --production
 COPY src/ ./src/
 COPY api/ ./api/
 EXPOSE 3000
@@ -1636,7 +1672,12 @@ def _gen_tests(out, ctx, modules, lang) -> list[str]:
             written.append(f"tests/test_{m}.py")
         else:
             test = f"""const request = require('supertest');
-const app = require('../../src/app');
+const app = require('../src/app');
+
+beforeAll(async () => {{
+  // Wait for database sync to complete before running tests
+  if (app.dbReady) await app.dbReady;
+}}, 15000);
 
 describe('{m.capitalize()} API', () => {{
   it('GET /api/{m} should return 200', async () => {{

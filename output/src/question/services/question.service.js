@@ -1,16 +1,19 @@
 const Question = require('../models/question.model');
 
 class QuestionService {
-  async getPrompt(params) {
-    // TODO: implement string
-    return {};
+  async getPrompt(data = {}) {
+    const result = await Question.findAll({ where: data });
+    return result;
   }
 
-  async getOptions(params) {
-    // TODO: implement List<string>
-    return {};
+  async getOptions(data = {}) {
+    const result = await Question.findAll({ where: data });
+    return result;
   }
 
+  async findAll() { return await Question.findAll(); }
+  async findById(id) { return await Question.findByPk(id); }
+  async create(data) { return await Question.create(data); }
 }
 
 module.exports = new QuestionService();

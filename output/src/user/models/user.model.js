@@ -7,7 +7,7 @@ const User = sequelize.define('User', {
 
     username: { type: DataTypes.STRING,  },
 }, {
-  tableName: 'space-fractions_users',
+  tableName: 'users',
   timestamps: true,
   underscored: true,
 });

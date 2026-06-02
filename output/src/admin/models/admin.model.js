@@ -7,7 +7,7 @@ const Admin = sequelize.define('Admin', {
 
     username: { type: DataTypes.STRING,  },
 }, {
-  tableName: 'space-fractions_admins',
+  tableName: 'admins',
   timestamps: true,
   underscored: true,
 });

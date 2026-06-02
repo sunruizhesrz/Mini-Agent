@@ -224,11 +224,47 @@ A preprocessor has:
 - Clean formatting
 - Meaningful comments
 
-4. **Report**: When complete, list every file you created or modified.
+4. **Verify and self-fix**: This is the MOST IMPORTANT step. After generating files, you MUST verify them and fix any errors:
+
+### Phase A: Syntax check every generated file
+Run this for EVERY .js file you created or edited:
+```bash
+node -c {output_dir}/src/game/models/game.model.js
+```
+If it reports a syntax error, read the file, fix it, and re-check. Repeat until clean.
+
+### Phase B: Install and test
+After ALL syntax checks pass:
+```bash
+cd {output_dir} && npm install
+```
+If install fails with "missing supertest" or other missing packages, add them to package.json devDependencies and re-run `npm install`.
+Then run the tests:
+```bash
+cd {output_dir} && npm test
+```
+If any test fails, read the error output carefully, find the root cause (missing controller method? wrong table name? broken import?), fix the source file, and re-run `npm test`. Repeat until ALL tests pass.
+
+### Phase C: Application startup
+After tests pass:
+```bash
+cd {output_dir} && timeout 5 node src/server.js || true
+```
+If the server crashes with a require error or Sequelize error, fix it and re-test.
+Also check that `sequelize.sync()` is called during startup — if not, add it.
+
+### Common errors to proactively fix:
+- Routes reference `controller.getAll` but the controller only has custom methods → add `getAll` and `getById` to the controller
+- `npm ci` in Dockerfile but no `package-lock.json` exists → change to `npm install --production`
+- SQL table name is `games` but Sequelize model says `tableName: 'project_games'` → make them match
+- Controller uses `req.params` but the route has no parameters → use `req.query` or `req.body` instead
+- Tests require `supertest` but it's not in devDependencies → add it
+
+5. **Report**: When done, list every file you created or modified AND the test results showing all tests passing.
 
 Output directory: `{output_dir}/`
 
-Begin by reading `{ctx_path}`."""
+Begin by reading `{ctx_path}`. Then generate, test, fix, and re-test until everything passes."""
 
     print_info("Phase 2: Agent generating project...\n")
 

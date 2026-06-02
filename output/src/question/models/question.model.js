@@ -7,9 +7,9 @@ const Question = sequelize.define('Question', {
 
     prompt: { type: DataTypes.STRING,  },
 
-    options: { type: DataTypes.STRING,  },
+    options: { type: DataTypes.JSONB,  },
 }, {
-  tableName: 'space-fractions_questions',
+  tableName: 'questions',
   timestamps: true,
   underscored: true,
 });
