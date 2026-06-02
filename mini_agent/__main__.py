@@ -172,107 +172,101 @@ def main() -> None:
         print_error(f"File not found: {e}")
         sys.exit(1)
 
-    # 阶段二: Agent读取结构化上下文 → 生成完整项目
+    # 阶段二: Agent验证项目并修复测试错误（不重新生成文件）
     ctx_path = os.path.join(output_dir, "structured_context.json")
-    prompt = f"""You are a Code Agent. Your task: read a structured architecture specification and generate a complete project scaffold.
+    prompt = f"""You are a Code Agent. Your task: verify a pre-generated project scaffold and fix any remaining issues.
 
-## Phase 1 has already completed
+## Phase 1 has already completed — a FULLY GENERATED project exists
 
-A preprocessor has:
-1. Parsed the architecture documentation (.md files)
-2. Extracted structured information into `{ctx_path}`
-3. Generated a basic scaffold at `{output_dir}/` with package.json, config files, and placeholder source code
+A deterministic preprocessor (generator.py) has already:
+1. Parsed the architecture documentation (.md files) into `{ctx_path}`
+2. Parsed all PlantUML diagrams (class, sequence, deployment, etc.)
+3. Generated a COMPLETE, runnable project at `{output_dir}/` — including ALL source code, config files, Dockerfile, tests, and frontend
 
-## Your task
+The Phase 1 generator uses deterministic regex + template logic (NOT an LLM), so its output is consistent and reliable. It has been verified to produce 4/4 passing tests on previous runs.
 
-1. **Read the structured context**: Use read_file to read `{ctx_path}`. This JSON contains:
-   - `project_name`, `architectural_style`, `stack` (tech stack: lang, fw, db, cache...)
-   - `classes` (all entities from PlantUML diagrams with their fields and methods)
-   - `relations` (relationships between classes: composition, association, message)
-   - `tables` (SQL table definitions with columns and types)
-   - `endpoints` (API paths and methods from OpenAPI specs)
-   - `k8s_resources` (Kubernetes deployment configs)
-   - `traceability` (requirements-to-components mapping)
+## Your task: verify and fix (NOT regenerate)
 
-2. **Review the existing scaffold**: Use list_files and read_file to inspect what the preprocessor already created in `{output_dir}/`.
+**CRITICAL: Do NOT use write_file to overwrite existing files.** Phase 1 generates correct code; your role is to verify and apply minimal targeted fixes via edit_file. Rewriting entire files with write_file introduces regressions because LLM output varies between runs.
 
-3. **Generate the COMPLETE project**. Read `{ctx_path}` first, then for every class and table, create proper source files:
+### Step 1 — Quick survey
+Use list_files to see the project structure at `{output_dir}/`, then read a few key files to understand the codebase (start with package.json and src/app.js).
 
-### For each class (Game, Question, User, Admin):
-- **Model** (`src/{{module}}/models/`): Sequelize model. Use SQL table columns if available, otherwise use PlantUML class fields. Map types correctly (SERIAL→INTEGER, JSONB→JSONB, string→STRING, int→INTEGER, List<T>→ARRAY).
-- **Service** (`src/{{module}}/services/`): Implement EVERY method from the PlantUML class diagram. Do NOT leave TODO stubs — write actual logic with proper error handling.
-- **Controller** (`src/{{module}}/controllers/`): Wire service methods to Express request/response with try-catch blocks.
-- **Route** (`src/{{module}}/routes/`): Map API endpoints from structured_context to controller methods. Add full CRUD routes for each module.
+Optionally read `{ctx_path}` to understand the architecture specification, but do NOT use it to regenerate files — the files already exist and are correct.
 
-### Relations & Foreign Keys:
-- If ClassA --* ClassB (composition), add a foreign key field (e.g., `game_id`) to ClassB's model.
-
-### Config files:
-- **package.json**: Dependencies must match the tech stack (PostgreSQL→pg+sequelize, Redis→ioredis, RabbitMQ→amqplib).
-- **Dockerfile**: Multi-stage build, non-root user, healthcheck, node:18-alpine base.
-- **docker-compose.yml**: App + PostgreSQL + Redis services.
-- **README.md**: Project description, architecture overview, tech stack table, full API endpoint table, getting started guide.
-- **api/openapi.yaml**: Complete OpenAPI 3.0 spec based on endpoints from structured_context.
-- **k8s/deployment.yaml**: Kubernetes deployment from k8s_resources in the context.
-- **sql/*.sql**: CREATE TABLE statements from tables in the context.
-- **Tests**: One test file per module, testing all endpoints.
-- **.env.example** and **.gitignore**.
-
-### Quality:
-- Consistent import paths (no broken requires)
-- snake_case table names, camelCase JS variables
-- Clean formatting
-- Meaningful comments
-
-4. **Verify and self-fix**: This is the MOST IMPORTANT step. After generating files, you MUST verify them and fix any errors:
-
-### Phase A: Syntax check every generated file
-Run this for EVERY .js file you created or edited:
+### Step 2 — Syntax check all .js files
+Run `node -c` on every .js file:
 ```bash
-node -c {output_dir}/src/game/models/game.model.js
+for f in $(find {output_dir}/src -name "*.js"); do node -c "$f" && echo "OK: $f" || echo "FAIL: $f"; done
 ```
-If it reports a syntax error, read the file, fix it, and re-check. Repeat until clean.
+If any syntax error is found:
+1. **read_file** the failing file to see the current code
+2. **edit_file** with a precise, minimal fix (e.g., add a missing closing brace)
+3. Re-run `node -c` to confirm the fix
+4. Move on — do NOT rewrite the entire file
 
-### Phase B: Install and test
-After ALL syntax checks pass:
+### Step 3 — Install dependencies
 ```bash
 cd {output_dir} && npm install
 ```
-If install fails with "missing supertest" or other missing packages, add them to package.json devDependencies and re-run `npm install`.
-Then run the tests:
+If install fails:
+- Missing package in devDependencies? → **edit_file** to add just that one dependency to package.json, then re-run `npm install`
+- Do NOT rewrite the entire package.json
+
+### Step 4 — Run tests and fix failures (ITERATE UNTIL ALL PASS)
 ```bash
 cd {output_dir} && npm test
 ```
-If any test fails, read the error output carefully, find the root cause (missing controller method? wrong table name? broken import?), fix the source file, and re-run `npm test`. Repeat until ALL tests pass.
 
-### Phase C: Application startup
-After tests pass:
+**This is the core loop.** For each test failure:
+1. Read the full error output carefully
+2. **read_file** the failing test file AND the source file it depends on
+3. Diagnose the root cause (see common patterns below)
+4. **edit_file** with the minimal fix
+5. Re-run `npm test`
+6. Repeat until ALL tests pass
+
+**Common failure patterns and their fixes:**
+
+| Symptom | Root Cause | Fix |
+|---------|-----------|-----|
+| `Cannot find module '../../src/server'` in test | Test imports wrong path | edit_file the test: change require path to `../src/app` |
+| `Cannot find module '../services/xxx.service'` | Wrong relative path in controller | edit_file the controller: fix the require path |
+| Test expects `/api/game` but returns 500 | Route prefix mismatch with test expectations | edit_file EITHER the test path OR the route prefix to match |
+| `game.service.js` has `throw new Error(...not implemented)` | Phase 1 backup stub was not replaced | edit_file the service: implement the actual logic |
+| `Sequelize.sync is not a function` | sequelize instance not exported as expected | read_file database.js first, then fix the import in models |
+| Test response body doesn't match expected | Controller returns different shape | read the controller, then edit_file to align test expectation with actual response |
+| Route has `/:id` but controller uses `req.query` | Controller doesn't match route params | edit_file the controller: use `req.params.id` instead of `req.query` |
+| `npm ci` in Dockerfile fails | No package-lock.json committed | edit_file Dockerfile: change `npm ci` to `npm install --production` |
+| `helmet` CSP blocks inline scripts | Missing CSP config | edit_file app.js: add `contentSecurityPolicy: false` to helmet config |
+
+### Step 5 — Verify application startup
 ```bash
 cd {output_dir} && timeout 5 node src/server.js || true
 ```
-If the server crashes with a require error or Sequelize error, fix it and re-test.
-Also check that `sequelize.sync()` is called during startup — if not, add it.
+If the server crashes:
+1. Read the error message
+2. **read_file** the file mentioned in the stack trace
+3. **edit_file** with the fix
+4. Re-test startup
 
-### Common errors to proactively fix:
-- Routes reference `controller.getAll` but the controller only has custom methods → add `getAll` and `getById` to the controller
-- `npm ci` in Dockerfile but no `package-lock.json` exists → change to `npm install --production`
-- SQL table name is `games` but Sequelize model says `tableName: 'project_games'` → make them match
-- Controller uses `req.params` but the route has no parameters → use `req.query` or `req.body` instead
-- Tests require `supertest` but it's not in devDependencies → add it
+### Step 6 — Report
+When all checks pass, report:
+- Number of files edited (not rewritten)
+- Each fix applied and why
+- Final test results (all passing)
 
-5. **Report**: When done, list every file you created or modified AND the test results showing all tests passing.
-
-Output directory: `{output_dir}/`
-
-Begin by reading `{ctx_path}`. Then generate, test, fix, and re-test until everything passes.
+---
 
 **CRITICAL CONSTRAINT: You MUST NOT exit until ALL of the following pass:**
 1. Every .js file passes `node -c <file>`
 2. `npm install` succeeds
-3. `npm test` returns "4 passed, 4 total" (or equivalent for the detected language)
-4. `timeout 5 node src/server.js` starts without error (or equivalent for the detected language)
+3. `npm test` returns all tests passing (e.g. "4 passed, 4 total")
+4. `timeout 5 node src/server.js` starts without error
 
-If ANY of these fail, you MUST read the error, fix the source file, and re-verify. Do NOT exit with failures. This is a hard requirement."""
+If ANY of these fail, you MUST read the error, apply a minimal edit_file fix, and re-verify. Do NOT exit with failures. Do NOT rewrite entire files — use edit_file for surgical fixes.
+
+Output directory: `{output_dir}/`"""
 
     print_info("Phase 2: Agent generating project...\n")
 

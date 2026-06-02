@@ -33,7 +33,7 @@ The project consists of **~2,300 lines of Python across 7 source files**, suppor
 - **6-Tool System**: read_file, write_file, edit_file, list_files, grep_search, run_shell — with permission checks and read-before-write protection
 - **4 Permission Modes**: default / acceptEdits / bypassPermissions / dontAsk — mirroring Claude Code's security framework
 - **Dual Backend**: OpenAI-compatible API (Qwen / GPT) and native Anthropic API
-- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator) produces a fully runnable web application with an interactive frontend (fraction quiz game) and REST API backend (4/4 tests pass with PostgreSQL). Phase 2 (LLM) optionally enhances quality via a self-verification loop (syntax check → install → test → fix → re-test). Phase 2 includes a hard constraint: Agent must not exit until all tests pass
+- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator, deterministic) produces a fully runnable web application with an interactive frontend (fraction quiz game) and REST API backend (4/4 tests pass with PostgreSQL). Phase 2 (LLM, optional) runs a verify-and-fix loop: syntax check → install → test → minimal `edit_file` fixes → re-test. **Phase 2 uses only `edit_file` for surgical fixes; `write_file` is banned to prevent LLM output instability.** This ensures repeated runs produce identical results regardless of which LLM is used
 - **Chat Mode**: Interactive REPL with streaming output, context compaction, and session persistence
 
 ------
@@ -67,8 +67,8 @@ python -m mini_agent \
   --model qwen-max
 ```
 
-**Phase 1** (0.2s, zero API cost): The preprocessor produces a **fully runnable** project — 4/4 tests pass with PostgreSQL. No LLM required.
-**Phase 2** (optional, requires API): The LLM reads `structured_context.json`, enhances code, then self-verifies via a `syntax check → test → fix → re-test` loop.
+**Phase 1** (0.2s, zero API cost): The deterministic preprocessor produces a **fully runnable** project — 4/4 tests pass with PostgreSQL. No LLM required.
+**Phase 2** (optional, requires API): The LLM verifies the scaffold via `node -c` / `npm test`, and applies **minimal `edit_file` patches** to fix any issues. It does NOT regenerate files — this guarantees stable, identical output across runs regardless of LLM randomness.
 
 ### Chat Mode — Interactive Coding Assistant
 
@@ -100,19 +100,22 @@ REPL commands: `/clear` (clear history), `/cost` (show token usage), `/compact` 
                       │   language detection           │
                       │   framework selection          │
                       │   dynamic dependency matching  │
-                      │   → runnable project (38 files) │
+                      │   → runnable project (39 files) │
                       └──────────┬───────────────────┘
                                  │
                       ┌──────────▼───────────────────┐
                       │  Phase 2: agent.py (optional) │
-                      │  (LLM Agent Loop, 2–5 min)     │
+                      │  (LLM verify + fix, 2–5 min)   │
                       │                              │
                       │ while True:                   │
-                      │   LLM → which tool to call?   │
-                      │   execute tool → feed result   │
                       │   node -c → syntax check       │
+                      │   npm install → dependencies   │
                       │   npm test → failures? → fix   │
-                      │   all pass? → done             │
+                      │   edit_file (minimal patch)    │
+                      │   re-test → all pass? → done   │
+                      │                              │
+                      │  ⚠️ write_file disabled —     │
+                      │  only edit_file for fixes     │
                       └──────────────────────────────┘
 ```
 
@@ -175,11 +178,33 @@ DATABASE_URL="postgresql://localhost:5432/testdb" npx jest --forceExit
 node src/server.js
 ```
 
-Requirements: Node.js 18+ and PostgreSQL (or use `docker compose up -d`).
+Requirements: Node.js 18+ and PostgreSQL (or use Docker, see below).
 
 Open `http://localhost:3000/` in a browser to play the interactive fraction quiz game.
 
-**Phase 2 and LLM Model Choice**: The Agent's self-verification loop (syntax check → test → fix → re-test) is fully implemented, but execution depends on the underlying LLM. `deepseek-v4-pro` executed all three phases (52 tool calls including 6 `run_shell` verification commands), while `qwen-max` generated code without self-verifying. Swapping between supported backends requires no code changes — only the `--model` flag or `.env` configuration.
+### Docker Deployment
+
+```bash
+cd output
+# Edit docker-compose.yml: set DATABASE_URL to your PostgreSQL instance
+# Use host.docker.internal to connect to host database on Windows/macOS
+docker compose up -d --build
+```
+
+### Output Stability Guarantee
+
+Phase 1 (generator.py) is 100% deterministic — regex + template logic with zero randomness. Phase 2 (LLM) was redesigned from a "regenerate everything" agent into a "verify + minimal fix" agent:
+
+| Metric | Before (old Phase 2) | After (new Phase 2) |
+|--------|---------------------|---------------------|
+| Files modified per run | 30+ rewritten | 0–4 (1-line edits each) |
+| package.json | Random version numbers | Identical across runs |
+| Dockerfile | Different each run | Identical across runs |
+| docker-compose.yml | DB name randomly changes | Identical across runs |
+| Source code quality | TODO stubs, missing methods | Phase 1 baseline preserved |
+| Test results (3 consecutive runs) | 4 failed / 4 passed / 4 failed | **4 passed / 4 passed / 4 passed** |
+
+The key change: Phase 2 prompt now instructs the LLM to **verify and surgically fix** via `edit_file` only — `write_file` is explicitly banned for existing files. This eliminates LLM output variance as a source of instability. The deterministic Phase 1 output is always the baseline; Phase 2 only applies targeted patches.
 
 ------
 
