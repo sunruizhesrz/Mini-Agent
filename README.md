@@ -16,7 +16,7 @@
 
 **<span style="font-family: Consolas;">Mini Agent</span>** is a simple Code Agent built after studying the open-source implementation mechanisms of Claude Code.
 It implements an LLM-driven Agent Loop (while True + LLM decision + tool execution) and a universal preprocessor
-that transforms architecture documentation into complete project scaffolds.
+that transforms architecture documentation into complete, runnable web applications — including REST API backend, database models, and an interactive HTML/CSS/JS frontend.
 
 The project consists of **~2,300 lines of Python across 7 source files**, supporting both a pipeline mode
 (architecture documents → project scaffold) and a Chat mode (interactive coding assistant).
@@ -33,7 +33,7 @@ The project consists of **~2,300 lines of Python across 7 source files**, suppor
 - **6-Tool System**: read_file, write_file, edit_file, list_files, grep_search, run_shell — with permission checks and read-before-write protection
 - **4 Permission Modes**: default / acceptEdits / bypassPermissions / dontAsk — mirroring Claude Code's security framework
 - **Dual Backend**: OpenAI-compatible API (Qwen / GPT) and native Anthropic API
-- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator) produces a fully runnable project (4/4 tests pass with PostgreSQL). Phase 2 (LLM) optionally enhances quality via self-verification loop (syntax check → test → fix → re-test)
+- **Pipeline Mode**: Two-phase architecture — Phase 1 (generator) produces a fully runnable web application with an interactive frontend (fraction quiz game) and REST API backend (4/4 tests pass with PostgreSQL). Phase 2 (LLM) optionally enhances quality via self-verification loop (syntax check → test → fix → re-test)
 - **Chat Mode**: Interactive REPL with streaming output, context compaction, and session persistence
 
 ------
@@ -121,10 +121,10 @@ REPL commands: `/clear` (clear history), `/cost` (show token usage), `/compact` 
 ## 📋 Repository Structure
 
 ```plaintext
-├── mini_agent/                 # Source code (7 files, ~2,300 lines)
+├── mini_agent/                 # Source code (7 files, ~2,400 lines)
 │   ├── __init__.py
 │   ├── __main__.py             # CLI entry: pipeline / Chat dispatch
-│   ├── generator.py            # Universal preprocessor: .md → JSON (1,400 lines)
+│   ├── generator.py            # Universal preprocessor: .md → JSON (1,650 lines)
 │   ├── agent.py                # Agent Loop + dual-backend LLM calls (640 lines)
 │   ├── tools.py                # 6 tools + permission system (370 lines)
 │   ├── prompt.py               # System prompt builder (150 lines)
@@ -133,6 +133,10 @@ REPL commands: `/clear` (clear history), `/cost` (show token usage), `/compact` 
 ├── example/                    # Example architecture documents (Space Fractions)
 │   ├── Architecture_Documentation.md
 │   └── Architecture_View.md
+├── output/                     # Generated project (runnable Node.js web app)
+│   ├── src/                    # Express backend + interactive frontend
+│   ├── tests/                  # 4 passing Jest tests
+│   └── Dockerfile              # Docker deployment
 ├── pyproject.toml              # Python project configuration
 ├── .env.example                # API key configuration template
 └── README.md                   # This document
@@ -172,6 +176,8 @@ node src/server.js
 ```
 
 Requirements: Node.js 18+ and PostgreSQL (or use `docker compose up -d`).
+
+Open `http://localhost:3000/` in a browser to play the interactive fraction quiz game.
 
 ------
 
